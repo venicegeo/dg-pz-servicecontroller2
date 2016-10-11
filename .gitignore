@@ -1,13 +1,4 @@
-.classpath
-.project
-.settings
-mainServiceController/.classpath
-mainServiceController/.project
-SumTestService/.classpath
-SumTestService/.gitignore
-SumTestService/.project
-SumTestService/.settings/
-SumTestService/target/
-mainServiceController/.classpath
-*.project
-mainServiceController/.settings/org.eclipse.core.resources.prefs
+target/
+*.class
+*.jar
+
