@@ -1,8 +1,8 @@
 applications:
 - name: pz-servicecontroller
   host: pz-servicecontroller
-  path: pz-servicecontroller.jar
-  buildpack: 'https://github.com/cloudfoundry/java-buildpack.git#v3.9'
+  path: pz-servicecontroller.jar 
+  buildpack: java_buildpack_offline_3_12
   memory: 1024M
   instances: 1
   timeout: 80

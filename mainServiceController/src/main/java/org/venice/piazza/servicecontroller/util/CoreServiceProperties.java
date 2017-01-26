@@ -45,10 +45,6 @@ public class CoreServiceProperties {
 	
 	@Value("${server.port}")
 	private int serverPort;
-	@Value("${vcap.services.pz-mongodb.credentials.uri}")
-	private String mongoHost;
-	@Value("${vcap.services.pz-mongodb.credentials.database}")
-	private String mongoDBName;
 	@Value("${mongo.db.collection.name}")
 	private String mongoCollectionName;
 	@Value("${servicecontroller.host}")
@@ -145,22 +141,6 @@ public class CoreServiceProperties {
 
 	public void setServerPort(int serverPort) {
 		this.serverPort = serverPort;
-	}
-
-	public String getMongoHost() {
-		return mongoHost;
-	}
-
-	public void setMongoHost(String mongoHost) {
-		this.mongoHost = mongoHost;
-	}
-
-	public String getMongoDBName() {
-		return mongoDBName;
-	}
-
-	public void setMongoDBName(String mongoDBName) {
-		this.mongoDBName = mongoDBName;
 	}
 
 	public String getMongoCollectionName() {

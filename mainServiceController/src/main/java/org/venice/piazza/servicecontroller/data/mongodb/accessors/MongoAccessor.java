@@ -16,6 +16,7 @@
 package org.venice.piazza.servicecontroller.data.mongodb.accessors;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -42,9 +43,12 @@ import org.venice.piazza.servicecontroller.util.CoreServiceProperties;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
 import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
 import com.mongodb.MongoClientURI;
+import com.mongodb.MongoCredential;
 import com.mongodb.MongoException;
 import com.mongodb.MongoTimeoutException;
+import com.mongodb.ServerAddress;
 
 import model.job.metadata.ResourceMetadata;
 import model.response.Pagination;
@@ -66,8 +70,17 @@ import util.PiazzaLogger;
 public class MongoAccessor {
 	@Value("${mongo.thread.multiplier}")
 	private int mongoThreadMultiplier;
-	private String DATABASE_HOST;
+	@Value("${vcap.services.pz-mongodb.credentials.database}")
 	private String DATABASE_NAME;
+	@Value("${vcap.services.pz-mongodb.credentials.host}")
+	private String DATABASE_HOST;
+	@Value("${vcap.services.pz-mongodb.credentials.port}")
+	private int DATABASE_PORT;
+	@Value("${vcap.services.pz-mongodb.credentials.username}")
+	private String DATABASE_USERNAME;
+	@Value("${vcap.services.pz-mongodb.credentials.password}")
+	private String DATABASE_CREDENTIAL;
+
 	private String SERVICE_COLLECTION_NAME;
 	private static final String ASYNC_INSTANCE_COLLECTION_NAME = "AsyncServiceInstances";
 	private MongoClient mongoClient;
@@ -87,8 +100,6 @@ public class MongoAccessor {
 	@PostConstruct
 	private void initialize() {
 		// Initialize the MongoDB
-		DATABASE_HOST = coreServiceProperties.getMongoHost();
-		DATABASE_NAME = coreServiceProperties.getMongoDBName();
 		SERVICE_COLLECTION_NAME = coreServiceProperties.getMongoCollectionName();
 		LOGGER.debug("====================================================");
 		LOGGER.debug("DATABASE_HOST=" + DATABASE_HOST);
@@ -97,7 +108,14 @@ public class MongoAccessor {
 		LOGGER.debug("====================================================");
 
 		try {
-			mongoClient = new MongoClient(new MongoClientURI(DATABASE_HOST + "?waitQueueMultiple=" + mongoThreadMultiplier));
+			MongoClientOptions.Builder builder = new MongoClientOptions.Builder();
+			builder.sslEnabled(true);
+			builder.sslInvalidHostNameAllowed(true);
+
+			mongoClient = new MongoClient(
+					new ServerAddress(DATABASE_HOST, DATABASE_PORT),
+					Arrays.asList(MongoCredential.createCredential(DATABASE_USERNAME, DATABASE_NAME, DATABASE_CREDENTIAL.toCharArray())),
+					builder.build());
 		} catch (Exception ex) {
 			String message = String.format("Error Contacting Mongo Host %s: %s", DATABASE_HOST, ex.getMessage());
 			logger.log(message, PiazzaLogger.ERROR);
