@@ -115,7 +115,7 @@ public class MongoAccessor {
 			mongoClient = new MongoClient(
 					new ServerAddress(DATABASE_HOST, DATABASE_PORT),
 					Arrays.asList(MongoCredential.createCredential(DATABASE_USERNAME, DATABASE_NAME, DATABASE_CREDENTIAL.toCharArray())),
-					builder.build());
+					builder.threadsAllowedToBlockForConnectionMultiplier(mongoThreadMultiplier).build());
 		} catch (Exception ex) {
 			String message = String.format("Error Contacting Mongo Host %s: %s", DATABASE_HOST, ex.getMessage());
 			logger.log(message, PiazzaLogger.ERROR);
