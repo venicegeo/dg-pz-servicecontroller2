@@ -17,7 +17,9 @@ package org.venice.piazza.servicecontroller.data.mongodb.accessors;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import javax.annotation.PostConstruct;
@@ -42,20 +44,25 @@ import org.venice.piazza.servicecontroller.util.CoreServiceProperties;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
+import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoClientURI;
 import com.mongodb.MongoCredential;
 import com.mongodb.MongoException;
 import com.mongodb.MongoTimeoutException;
 import com.mongodb.ServerAddress;
 
+import exception.InvalidInputException;
+import model.job.Job;
 import model.job.metadata.ResourceMetadata;
+import model.logger.AuditElement;
+import model.logger.Severity;
 import model.response.Pagination;
 import model.response.PiazzaResponse;
 import model.response.ServiceListResponse;
 import model.service.SearchCriteria;
 import model.service.metadata.Service;
+import model.service.taskmanaged.ServiceJob;
 import util.PiazzaLogger;
 
 /**
@@ -84,6 +91,10 @@ public class MongoAccessor {
 	private String SERVICE_COLLECTION_NAME;
 	private static final String ASYNC_INSTANCE_COLLECTION_NAME = "AsyncServiceInstances";
 	private MongoClient mongoClient;
+	@Value("${mongo.db.servicequeue.collection.prefix}")
+	private String SERVICE_QUEUE_COLLECTION_PREFIX;
+	@Value("${mongo.db.job.collection.name}")
+	private String JOB_COLLECTION_NAME;
 
 	@Value("${async.stale.instance.threshold.seconds}")
 	private int STALE_INSTANCE_THRESHOLD_SECONDS;
@@ -111,14 +122,13 @@ public class MongoAccessor {
 			MongoClientOptions.Builder builder = new MongoClientOptions.Builder();
 			builder.sslEnabled(true);
 			builder.sslInvalidHostNameAllowed(true);
-
 			mongoClient = new MongoClient(
 					new ServerAddress(DATABASE_HOST, DATABASE_PORT),
 					Arrays.asList(MongoCredential.createCredential(DATABASE_USERNAME, DATABASE_NAME, DATABASE_CREDENTIAL.toCharArray())),
 					builder.threadsAllowedToBlockForConnectionMultiplier(mongoThreadMultiplier).build());
 		} catch (Exception ex) {
 			String message = String.format("Error Contacting Mongo Host %s: %s", DATABASE_HOST, ex.getMessage());
-			logger.log(message, PiazzaLogger.ERROR);
+			logger.log(message, Severity.ERROR);
 			LOGGER.error(message, ex);
 		}
 	}
@@ -150,12 +160,16 @@ public class MongoAccessor {
 			Query query = DBQuery.is("serviceId", sMetadata.getServiceId());
 
 			WriteResult<Service, String> writeResult = coll.update(query, sMetadata);
-			logger.log("The result is", writeResult.toString());
+			logger.log(String.format("%s %s", "The result is", writeResult.toString()), Severity.INFORMATIONAL);
+
+			logger.log(String.format("Updating resource in MongoDB %s", sMetadata.getServiceId()), Severity.INFORMATIONAL,
+					new AuditElement("serviceController", "Updated Service", sMetadata.getServiceId()));
+
 			// Return the id that was used
 			return sMetadata.getServiceId().toString();
 		} catch (MongoException ex) {
 			String message = String.format("Error Updating Mongo Service entry : %s", ex.getMessage());
-			logger.log(message, PiazzaLogger.ERROR);
+			logger.log(message, Severity.ERROR);
 			LOGGER.error(message, ex);
 		}
 		return result;
@@ -193,12 +207,17 @@ public class MongoAccessor {
 				deleteQuery.append("serviceId", serviceId);
 				collection.remove(deleteQuery);
 				result = " service " + serviceId + " deleted ";
+				// If any Service Queue exists, also delete that here.
+				deleteServiceQueue(serviceId);
 			}
+
+			logger.log(String.format("Deleting resource from MongoDB %s", serviceId), Severity.INFORMATIONAL,
+					new AuditElement("serviceController", "Deleted Service", serviceId));
 
 			return result;
 		} catch (MongoException ex) {
 			String message = String.format("Error Deleting Mongo Service entry : %s", ex.getMessage());
-			logger.log(message, PiazzaLogger.ERROR);
+			logger.log(message, Severity.ERROR);
 			LOGGER.error(message, ex);
 		}
 
@@ -214,11 +233,15 @@ public class MongoAccessor {
 			DBCollection collection = mongoClient.getDB(DATABASE_NAME).getCollection(SERVICE_COLLECTION_NAME);
 			JacksonDBCollection<Service, String> coll = JacksonDBCollection.wrap(collection, Service.class, String.class);
 			WriteResult<Service, String> writeResult = coll.insert(sMetadata);
+
+			logger.log(String.format("Saving resource in MongoDB %s", sMetadata.getServiceId()), Severity.INFORMATIONAL,
+					new AuditElement("serviceController", "Created Service ", sMetadata.getServiceId()));
+
 			// Return the id that was used
 			return sMetadata.getServiceId();
 		} catch (MongoException ex) {
 			String message = String.format("Error Saving Mongo Service entry : %s", ex.getMessage());
-			logger.log(message, PiazzaLogger.ERROR);
+			logger.log(message, Severity.ERROR);
 			LOGGER.error(message, ex);
 		}
 		return result;
@@ -243,7 +266,7 @@ public class MongoAccessor {
 			return result;
 		} catch (MongoException ex) {
 			String message = String.format("Error Listing Mongo Service entries : %s", ex.getMessage());
-			logger.log(message, PiazzaLogger.ERROR);
+			logger.log(message, Severity.ERROR);
 			LOGGER.error(message, ex);
 		}
 
@@ -450,7 +473,7 @@ public class MongoAccessor {
 	}
 
 	/**
-	 * Deletese an Async Service Instance by Job ID. This is done when the Service has been processed to completion and
+	 * Deletes an Async Service Instance by Job ID. This is done when the Service has been processed to completion and
 	 * the instance is no longer needed.
 	 * 
 	 * @param id
@@ -458,5 +481,244 @@ public class MongoAccessor {
 	 */
 	public void deleteAsyncServiceInstance(String jobId) {
 		getAsyncServiceInstancesCollection().remove(DBQuery.is("jobId", jobId));
+	}
+
+	/**
+	 * Gets a list of all Piazza Services that are registered as a Task-Managed Service.
+	 * 
+	 * @return List of Task-Managed Services
+	 */
+	public List<Service> getTaskManagedServices() {
+		return getServiceCollection().find().and(DBQuery.is("isTaskManaged", true)).toArray();
+	}
+
+	/**
+	 * Gets the next Job in the queue for a particular service.
+	 * <p>
+	 * This method is synchronized because it is incredibly important that we never return the same job twice, avoiding
+	 * potential race conditions.
+	 * </p>
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service to fetch work for.
+	 * @return The next ServiceJob in the Service Queue, if one exists; null if the Queue has no Jobs ready to be
+	 *         processed.
+	 */
+	public synchronized ServiceJob getNextJobInServiceQueue(String serviceId) {
+		// Query for Service Jobs, sort by Queue Time, so that we get the single most stale Job. Ignore Jobs that have
+		// already been started. Find the latest.
+		DBCursor<ServiceJob> cursor = getServiceJobCollection(serviceId).find().sort(DBSort.asc("queuedOn"))
+				.and(DBQuery.is("startedOn", null)).limit(1);
+		if (!cursor.hasNext()) {
+			// No available Jobs to be processed.
+			return null;
+		}
+		ServiceJob serviceJob = cursor.next();
+		// Set the current Started Time that this Job was pulled off the queue
+		getServiceJobCollection(serviceId).update(DBQuery.is("jobId", serviceJob.getJobId()),
+				DBUpdate.set("startedOn", new DateTime().getMillis()));
+		// Return the Job
+		return serviceJob;
+	}
+
+	/**
+	 * Gets the complete list of all Jobs in the Service's Service Queue that have exceeded the length of time for
+	 * processing, and are thus considered timed out.
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service whose Queue to check
+	 * @return The list of timed out Jobs
+	 */
+	public List<ServiceJob> getTimedOutServiceJobs(String serviceId) {
+		// Get the Service details to find out the timeout information
+		Service service = getServiceById(serviceId);
+		Long timeout = service.getTimeout();
+		if (timeout == null) {
+			// If no timeout is specified for the Service, then we can't check for timeouts.
+			return new ArrayList<ServiceJob>();
+		}
+		// The timeout is in seconds. Get the current time and subtract the number of seconds to find the timestamp of a
+		// timed out service.
+		long timeoutEpoch = new DateTime().minusSeconds(timeout.intValue()).getMillis();
+		// Query the database for Jobs whose startedOn field is older than the timeout date.
+		JacksonDBCollection<ServiceJob, String> collection = getServiceJobCollection(serviceId);
+		DBCursor<ServiceJob> jobs = collection.find(DBQuery.exists("startedOn"));
+		jobs = jobs.and(DBQuery.lessThan("startedOn", timeoutEpoch));
+		// Return the list
+		return jobs.toArray();
+	}
+
+	/**
+	 * Gets the Service Job for the specified service with the specified Job ID
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service
+	 * @param jobId
+	 *            The ID of the Job
+	 * @return
+	 */
+	public ServiceJob getServiceJob(String serviceId, String jobId) throws MongoException {
+		BasicDBObject query = new BasicDBObject("jobId", jobId);
+		ServiceJob serviceJob;
+
+		try {
+			serviceJob = getServiceJobCollection(serviceId).findOne(query);
+		} catch (MongoTimeoutException mte) {
+			String error = "Mongo Instance Not Available.";
+			LOGGER.error(error, mte);
+			throw new MongoException(error);
+		}
+
+		return serviceJob;
+	}
+
+	/**
+	 * Increments the timeout count for the Job ID
+	 * 
+	 * @param serviceId
+	 *            The Service ID containing the Job
+	 * @param serviceJob
+	 *            The ServiceJob that has timed out
+	 */
+	public synchronized void incrementServiceJobTimeout(String serviceId, ServiceJob serviceJob) {
+		// Increment the failure count.
+		getServiceJobCollection(serviceId).update(DBQuery.is("jobId", serviceJob.getJobId()),
+				DBUpdate.set("timeouts", serviceJob.getTimeouts() + 1));
+		// Delete the previous Started On date, so that it can be picked up again.
+		getServiceJobCollection(serviceId).update(DBQuery.is("jobId", serviceJob.getJobId()), DBUpdate.unset("startedOn"));
+	}
+
+	/**
+	 * Adds a new Service Job reference to the specified Service's Job Queue.
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service
+	 * @param serviceJob
+	 *            The ServiceJob, describing the ID of the Job
+	 */
+	public void addJobToServiceQueue(String serviceId, ServiceJob serviceJob) {
+		getServiceJobCollection(serviceId).insert(serviceJob);
+	}
+
+	/**
+	 * Removes the specified Service Job (by ID) from the Service Queue for the specified Service
+	 * 
+	 * @param serviceId
+	 *            The ID of the service whose Job to remove
+	 * @param jobId
+	 *            The ID of the Job to remove from the queue
+	 */
+	public void removeJobFromServiceQueue(String serviceId, String jobId) {
+		DBObject matchJob = new BasicDBObject("jobId", jobId);
+		getServiceJobCollection(serviceId).remove(matchJob);
+	}
+
+	/**
+	 * Gets a reference to the Service Job collection for a Service
+	 */
+	public JacksonDBCollection<ServiceJob, String> getServiceJobCollection(String serviceId) {
+		String serviceCollectionName = getServiceQueueCollectionName(serviceId);
+		DBCollection collection = mongoClient.getDB(DATABASE_NAME).getCollection(serviceCollectionName);
+		return JacksonDBCollection.wrap(collection, ServiceJob.class, String.class);
+	}
+
+	/**
+	 * Gets a reference to the JobManager's Jobs Collection.
+	 * 
+	 * @return
+	 */
+	public JacksonDBCollection<Job, String> getJobCollection() {
+		DBCollection collection = mongoClient.getDB(DATABASE_NAME).getCollection(JOB_COLLECTION_NAME);
+		return JacksonDBCollection.wrap(collection, Job.class, String.class);
+	}
+
+	/**
+	 * Returns a Job that matches the specified Id.
+	 * 
+	 * @param jobId
+	 *            Job Id
+	 * @return The Job with the specified Id
+	 * @throws InterruptedException
+	 */
+	public Job getJobById(String jobId) throws ResourceAccessException, InterruptedException {
+		BasicDBObject query = new BasicDBObject("jobId", jobId);
+		Job job;
+
+		try {
+			if ((job = getJobCollection().findOne(query)) == null) {
+				// In case the Job was being updated, or it doesn't exist at this point, try once more. I admit this is
+				// not optimal, but it certainly covers a host of race conditions.
+				Thread.sleep(100);
+				job = getJobCollection().findOne(query);
+			}
+		} catch (MongoTimeoutException mte) {
+			LOGGER.error(mte.getMessage(), mte);
+			throw new ResourceAccessException("MongoDB instance not available.");
+		}
+
+		return job;
+	}
+
+	/**
+	 * Completely deletes a Service Queue for a registered service.
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service whose queue to drop.
+	 */
+	public void deleteServiceQueue(String serviceId) {
+		getServiceJobCollection(serviceId).drop();
+	}
+
+	/**
+	 * Determines if the User is able to access the Service Queue for the specified service or not.
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service
+	 * @param username
+	 *            The user name
+	 * @return True if able to access, false if not.
+	 */
+	public boolean canUserAccessServiceQueue(String serviceId, String username) throws InvalidInputException {
+		try {
+			Service service = getServiceById(serviceId);
+			if (service.getTaskAdministrators() != null) {
+				return service.getTaskAdministrators().contains(username);
+			} else {
+				return false;
+			}
+		} catch (ResourceAccessException exception) {
+			LOGGER.info(String.format("User %s attempted to check Service Queue for non-existent service with ID %s", username, serviceId),
+					exception);
+			throw new InvalidInputException("Service Not Found.");
+		}
+	}
+
+	/**
+	 * Gets the MongoDB Collection name for the list of Service Jobs for a specific Service.
+	 * <p>
+	 * Each Task-Managed Service will receive its own collection name based on its Service ID. By having separate
+	 * collections, instead of a single collection for all Service Queues, this allows for much faster queries.
+	 * </p>
+	 * 
+	 * @param serviceId
+	 *            The ID of the Service
+	 * @return The Collection Name for that Service's Service Queues
+	 */
+	private String getServiceQueueCollectionName(String serviceId) {
+		return String.format("%s-%s", SERVICE_QUEUE_COLLECTION_PREFIX, serviceId);
+	}
+
+	/**
+	 * Gets Metadata on the specified Service Queue
+	 * 
+	 * @param serviceId
+	 *            The ID of the service
+	 * @return Map containing metadata information
+	 */
+	public Map<String, Object> getServiceQueueCollectionMetadata(String serviceId) {
+		Map<String, Object> map = new HashMap<>();
+		// Get the Length
+		map.put("totalJobCount", getServiceJobCollection(serviceId).find().count());
+		return map;
 	}
 }

@@ -42,6 +42,7 @@ import model.job.PiazzaJobType;
 import model.job.metadata.ResourceMetadata;
 import model.job.type.DeleteServiceJob;
 import model.job.type.RegisterServiceJob;
+import model.logger.Severity;
 import model.request.PiazzaJobRequest;
 import model.service.metadata.Service;
 import util.PiazzaLogger;
@@ -96,7 +97,7 @@ public class DeleteServiceHandlerTest {
 	@Test
 	public void testHandleJobRequestNull() {
 		PiazzaJobType jobRequest = null;
-		Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+		//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 		ResponseEntity<String> result = dhHandler.handle(jobRequest);
 
         assertEquals("The response to a null JobRequest Deletion should be null", result.getStatusCode(), HttpStatus.BAD_REQUEST);
@@ -271,7 +272,7 @@ public class DeleteServiceHandlerTest {
 		String testServiceId = "9a6baae2-bd74-4c4b-9a65-c45e8cd9060";
 		Mockito.doReturn(testServiceId).when(rsHandlerMock).handle(rsj.data);
 
-        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+        //Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 		// Should check to make sure each of the handlers are not null
 		//PiazzaResponse piazzaResponse = sc.registerService(pjr);
 

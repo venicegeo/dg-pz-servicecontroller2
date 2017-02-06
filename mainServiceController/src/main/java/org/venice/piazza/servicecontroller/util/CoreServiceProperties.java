@@ -31,7 +31,6 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 @EnableConfigurationProperties
-@ComponentScan({ "MY_NAMESPACE, util" })
 @ConfigurationProperties(locations = "classpath:application.properties", ignoreUnknownFields = false, prefix = "core")
 public class CoreServiceProperties {
 

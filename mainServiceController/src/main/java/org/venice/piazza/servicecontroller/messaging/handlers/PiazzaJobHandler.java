@@ -31,6 +31,7 @@ public interface PiazzaJobHandler {
 	 * 
 	 * @param jobRequest
 	 * @return
+	 * @throws InterruptedException 
 	 */
-	public ResponseEntity<String> handle(PiazzaJobType jobRequest);
+	public ResponseEntity<String> handle(PiazzaJobType jobRequest) throws InterruptedException;
 }

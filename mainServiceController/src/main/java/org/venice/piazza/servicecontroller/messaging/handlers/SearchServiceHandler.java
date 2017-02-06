@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import model.job.PiazzaJobType;
 import model.job.type.SearchServiceJob;
+import model.logger.Severity;
 import model.service.SearchCriteria;
 import model.service.metadata.Service;
 
@@ -67,7 +68,7 @@ public class SearchServiceHandler implements PiazzaJobHandler {
 			// Get the criteria to use for the search
 			SearchCriteria criteria = job.data;
 
-			coreLogger.log("search " + " " + criteria.field + "->" + criteria.pattern, PiazzaLogger.INFO);
+			coreLogger.log("search " + " " + criteria.field + "->" + criteria.pattern, Severity.INFORMATIONAL);
 	
 			ResponseEntity<String> response = handle(criteria);
 			responseEntity = new ResponseEntity<>(response.getBody(), response.getStatusCode());
@@ -88,13 +89,13 @@ public class SearchServiceHandler implements PiazzaJobHandler {
 		ResponseEntity<String> responseEntity;
 		String result;
 		if (criteria != null) {
-			coreLogger.log("About to search using criteria" + criteria, PiazzaLogger.INFO);
+			coreLogger.log("About to search using criteria" + criteria, Severity.INFORMATIONAL);
 	
 			List<Service> results = accessor.search(criteria);
 			if (results.isEmpty()) {
 				coreLogger.log(
 						"No results were returned searching for field " + criteria.getField() + " and search criteria " + criteria.getPattern(),
-						PiazzaLogger.INFO);
+						Severity.INFORMATIONAL);
 			
 				responseEntity = new ResponseEntity<>("No results were returned searching for field", HttpStatus.NO_CONTENT);
 			} else {
@@ -105,7 +106,7 @@ public class SearchServiceHandler implements PiazzaJobHandler {
 				} catch (JsonProcessingException jpe) {
 					// This should never happen, but still have to catch it
 					LOGGER.error("There was a problem generating the Json response", jpe);
-					coreLogger.log("There was a problem generating the Json response", PiazzaLogger.ERROR);
+					coreLogger.log("There was a problem generating the Json response", Severity.ERROR);
 					responseEntity = new ResponseEntity<>("Could not search for services" , HttpStatus.NOT_FOUND);
 				}
 			}

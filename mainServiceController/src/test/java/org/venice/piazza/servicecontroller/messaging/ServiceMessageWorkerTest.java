@@ -62,6 +62,7 @@ import model.job.Job;
 import model.job.metadata.ResourceMetadata;
 import model.job.type.ExecuteServiceJob;
 import model.job.type.RegisterServiceJob;
+import model.logger.Severity;
 import model.service.metadata.ExecuteServiceData;
 import model.service.metadata.Service;
 import util.PiazzaLogger;
@@ -227,7 +228,7 @@ public class ServiceMessageWorkerTest {
 			ExecuteServiceJob jobItem = (ExecuteServiceJob) validJob.jobType;
 			ExecuteServiceData esData = jobItem.data;
 			Mockito.when(esHandlerMock.handle(jobItem)).thenReturn(response);
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			// Test valid Payload
 			ConsumerRecord<String, String> kafkaMessage = new ConsumerRecord<String, String>("Test", 0, 0, "123456", "VALID");
@@ -273,7 +274,7 @@ public class ServiceMessageWorkerTest {
 
 			ExecuteServiceJob jobItem = (ExecuteServiceJob) validJob.jobType;
 			ExecuteServiceData esData = jobItem.data;
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			// Setup a new OFFLINE service
 			rm = new ResourceMetadata();
@@ -316,7 +317,7 @@ public class ServiceMessageWorkerTest {
 			ExecuteServiceData esData = jobItem.data;
 			// What happens if the handled executeservice returns a null
 			Mockito.when(esHandlerMock.handle(jobItem)).thenReturn(null);
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			// Test valid Payload
 			ConsumerRecord<String, String> kafkaMessage = new ConsumerRecord<String, String>("Test", 0, 0, "123456", "VALID");
@@ -350,7 +351,7 @@ public class ServiceMessageWorkerTest {
 			ExecuteServiceJob jobItem = (ExecuteServiceJob) validJob.jobType;
 			ExecuteServiceData esData = jobItem.data;
 			Mockito.when(esHandlerMock.handle(jobItem)).thenReturn(response);
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			// Test valid Payload
 			ConsumerRecord<String, String> kafkaMessage = new ConsumerRecord<String, String>("Test", 0, 0, "123456", "VALID");
@@ -393,7 +394,7 @@ public class ServiceMessageWorkerTest {
 			ExecuteServiceJob jobItem = (ExecuteServiceJob) validJob.jobType;
 			ExecuteServiceData esData = jobItem.data;
 			Mockito.when(esHandlerMock.handle(jobItem)).thenReturn(response);
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 			Mockito.when(omMock.readValue(Mockito.anyString(), eq(DataResource.class))).thenReturn(null);
 
 			// Test valid Payload
@@ -418,7 +419,7 @@ public class ServiceMessageWorkerTest {
 			rsj.data = service;
 			validJob.jobType = rsj;
 
-			Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+			//Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			// Test valid Payload
 			ConsumerRecord<String, String> kafkaMessage = new ConsumerRecord<String, String>("Test", 0, 0, "123456", "VALID");

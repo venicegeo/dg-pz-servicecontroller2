@@ -37,6 +37,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import model.job.metadata.ResourceMetadata;
 import model.job.type.SearchServiceJob;
+import model.logger.Severity;
 import model.service.SearchCriteria;
 import model.service.metadata.Service;
 import util.PiazzaLogger;
@@ -168,7 +169,7 @@ public class SearchServiceHandlerTest {
 
 			ResponseEntity<String> responseEntity = new  ResponseEntity<String>(responseServiceString, HttpStatus.OK);
 			Mockito.doReturn(services).when(accessorMock).search(criteria);		
-	        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+	        //Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 			ResponseEntity<String> result = ssHandler.handle(criteria);
 		
@@ -215,7 +216,7 @@ public class SearchServiceHandlerTest {
 		String actualResponse = "No results were returned searching for field";
 		ResponseEntity<String> responseEntity = new  ResponseEntity<String>(actualResponse, HttpStatus.NO_CONTENT);
 		Mockito.doReturn(results).when(accessorMock).search(criteria);		
-        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
+        //Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Severity.INFORMATIONAL);
 
 		ResponseEntity<String> result = ssHandler.handle(criteria);
 	

@@ -29,7 +29,6 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.WakeupException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +36,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.venice.piazza.servicecontroller.async.AsyncServiceInstanceScheduler;
+import org.venice.piazza.servicecontroller.taskmanaged.ServiceTaskManager;
 import org.venice.piazza.servicecontroller.util.CoreServiceProperties;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,8 +47,8 @@ import messaging.job.WorkerCallback;
 import model.job.Job;
 import model.job.type.AbortJob;
 import model.job.type.ExecuteServiceJob;
+import model.logger.Severity;
 import model.request.PiazzaJobRequest;
-import model.status.StatusUpdate;
 import util.PiazzaLogger;
 
 @Component
@@ -56,37 +56,34 @@ public class ServiceMessageThreadManager {
 
 	private String EXECUTE_SERVICE_JOB_TOPIC_NAME;
 
-	private String KAFKA_HOST;
-	private String KAFKA_PORT;
-	private String KAFKA_GROUP;
-		
 	/*
 	 * TODO need to determine how statuses will be sent to update the job (Call back?)
 	 */
 	private Producer<String, String> producer;
 	private Consumer<String, String> consumer;
-	private List<String> topics;
-	private final AtomicBoolean closed;
-
 	private Map<String, Future<?>> runningServiceRequests;
-	
+	private List<String> topics;
+	@Value("${vcap.services.pz-kafka.credentials.host}")
+	private String KAFKA_HOSTS;
+	@Value("${kafka.group.name}")
+	private String KAFKA_GROUP;
+	private final AtomicBoolean closed;
 	@Value("${SPACE}")
 	private String SPACE;
 
 	@Autowired
 	private CoreServiceProperties coreServiceProperties;
-
 	@Autowired
 	private PiazzaLogger coreLogger;
-
 	@Autowired
 	ServiceMessageWorker serviceMessageWorker;
-	
+	@Autowired
+	private ServiceTaskManager serviceTaskManager;
 	@Autowired
 	private AsyncServiceInstanceScheduler asyncServiceInstanceManager;
 
 	private final static Logger LOGGER = LoggerFactory.getLogger(ServiceMessageThreadManager.class);
-	
+
 	/**
 	 * Constructor for ServiceMessageThreadManager
 	 */
@@ -96,33 +93,25 @@ public class ServiceMessageThreadManager {
 	}
 
 	/**
-	 * Initializing stuff 
+	 * Initializing stuff
 	 */
 	@PostConstruct
 	public void initialize() {
-		
+
 		// Initialize dynamic topic names
 		EXECUTE_SERVICE_JOB_TOPIC_NAME = String.format("%s-%s", (new ExecuteServiceJob()).getClass().getSimpleName(), SPACE);
 
 		topics = Arrays.asList(EXECUTE_SERVICE_JOB_TOPIC_NAME);
 
-		// Initialize the Kafka consumer/producer
-		String kafkaHostFull = coreServiceProperties.getKafkaHost();
-		KAFKA_GROUP = coreServiceProperties.getKafkaGroup();
-
-		KAFKA_HOST = kafkaHostFull.split(":")[0];
-		KAFKA_PORT = kafkaHostFull.split(":")[1];
-
-		coreLogger.log("============================================================", PiazzaLogger.INFO);
-		coreLogger.log("EXECUTE_SERVICE_JOB_TOPIC_NAME=" + EXECUTE_SERVICE_JOB_TOPIC_NAME, PiazzaLogger.INFO);
-		coreLogger.log("KAFKA_GROUP=" + KAFKA_GROUP, PiazzaLogger.INFO);
-		coreLogger.log("KAFKA_HOST=" + KAFKA_HOST, PiazzaLogger.INFO);
-		coreLogger.log("KAFKA_PORT=" + KAFKA_PORT, PiazzaLogger.INFO);
-		coreLogger.log("============================================================", PiazzaLogger.INFO);
+		coreLogger.log("============================================================", Severity.INFORMATIONAL);
+		coreLogger.log("EXECUTE_SERVICE_JOB_TOPIC_NAME=" + EXECUTE_SERVICE_JOB_TOPIC_NAME, Severity.INFORMATIONAL);
+		coreLogger.log("KAFKA_GROUP=" + KAFKA_GROUP, Severity.INFORMATIONAL);
+		coreLogger.log("KAFKA_HOSTS=" + KAFKA_HOSTS, Severity.INFORMATIONAL);
+		coreLogger.log("============================================================", Severity.INFORMATIONAL);
 
 		/* Initialize producer and consumer for the Kafka Queue */
-		producer = KafkaClientFactory.getProducer(KAFKA_HOST, KAFKA_PORT);
-		consumer = KafkaClientFactory.getConsumer(KAFKA_HOST, KAFKA_PORT, KAFKA_GROUP);
+		producer = KafkaClientFactory.getProducer(KAFKA_HOSTS);
+		consumer = KafkaClientFactory.getConsumer(KAFKA_HOSTS, KAFKA_GROUP);
 
 		// Initialize the HashMap
 		runningServiceRequests = new HashMap<String, Future<?>>();
@@ -140,7 +129,7 @@ public class ServiceMessageThreadManager {
 		consumer.subscribe(topics);
 		kafkaListenerThread.start();
 
-		// Start polling for Kafka Abort Jobs on the unique Consumer.	
+		// Start polling for Kafka Abort Jobs on the unique Consumer.
 		Thread pollAbortThread = new Thread() {
 			@Override
 			public void run() {
@@ -176,16 +165,8 @@ public class ServiceMessageThreadManager {
 
 						if (job != null) {
 							// Log the request.
-							coreLogger.log(String.format("Received Job Request to process Topic %s with Job Id %s", consumerRecord.topic(), consumerRecord.key()), PiazzaLogger.INFO);
-							
-							// Update the status to say the job is in progress
-							StatusUpdate su = new StatusUpdate();
-							su.setStatus(StatusUpdate.STATUS_RUNNING);
-
-							ProducerRecord<String, String> prodRecord = new ProducerRecord<String, String>(
-									String.format("%s-%s", JobMessageFactory.UPDATE_JOB_TOPIC_NAME, SPACE), job.getJobId(),
-									mapper.writeValueAsString(su));
-							producer.send(prodRecord);
+							coreLogger.log(String.format("Received Job Request to process Topic %s with Job Id %s", consumerRecord.topic(),
+									consumerRecord.key()), Severity.INFORMATIONAL);
 
 							// start a new thread
 							Future<?> workerFuture = serviceMessageWorker.run(consumerRecord, producer, job, callback);
@@ -194,27 +175,25 @@ public class ServiceMessageThreadManager {
 						}
 
 					} catch (Exception ex) {
-						coreLogger.log(String.format("The item received did not marshal to a job: %s", ex), PiazzaLogger.FATAL);
+						coreLogger.log(String.format("The item received did not marshal to a job: %s", ex), Severity.CRITICAL);
 					}
 				} // for loop
 			} // while loop
 		} catch (Exception ex) {
-			coreLogger.log(String.format("The item received did not marshal to a job: %s", ex), PiazzaLogger.FATAL);
+			coreLogger.log(String.format("The item received did not marshal to a job: %s", ex), Severity.CRITICAL);
 
 		}
 
 	}
 
 	/**
-	 * Begins listening for Abort Jobs. If a Job is owned by this component,
-	 * then it will be terminated.
+	 * Begins listening for Abort Jobs. If a Job is owned by this component, then it will be terminated.
 	 */
 	public void pollAbortServiceJobs() {
-		Consumer<String, String> uniqueConsumer;
-		uniqueConsumer = KafkaClientFactory.getConsumer(KAFKA_HOST, KAFKA_PORT,
+		Consumer<String, String> uniqueConsumer = KafkaClientFactory.getConsumer(KAFKA_HOSTS,
 				String.format("%s-%s", KAFKA_GROUP, UUID.randomUUID().toString()));
 		ObjectMapper mapper = new ObjectMapper();
-		
+
 		try {
 			// Create the Unique Consumer
 
@@ -235,24 +214,29 @@ public class ServiceMessageThreadManager {
 						String error = String.format("Error Aborting Job. Could not get the Job ID from the Kafka Message with error:  %s",
 								exception.getMessage());
 						LOGGER.error(error, exception);
-						coreLogger.log(error, PiazzaLogger.ERROR);
+						coreLogger.log(error, Severity.ERROR);
 						continue;
 					}
-					
+
 					// Determine if this a Sync or Async job
 					if (runningServiceRequests.containsKey(jobId)) {
 						// Cancel the Running Synchronous Job by terminating its thread
 						boolean cancelled = runningServiceRequests.get(jobId).cancel(true);
 						if (cancelled) {
 							// Log the cancellation has occurred
-							coreLogger.log(String.format("Successfully requested termination of Job thread for Job ID %s", jobId), PiazzaLogger.INFO);
+							coreLogger.log(String.format("Successfully requested termination of Job thread for Job ID %s", jobId),
+									Severity.INFORMATIONAL);
 						} else {
-							coreLogger.log(String.format("Attempted to Cancel running job thread for ID %s, but the thread could not be forcefully cancelled.", jobId), PiazzaLogger.ERROR);
+							coreLogger.log(String.format(
+									"Attempted to Cancel running job thread for ID %s, but the thread could not be forcefully cancelled.",
+									jobId), Severity.ERROR);
 						}
 						// Remove it from the list of Running Jobs
 						runningServiceRequests.remove(jobId);
 					} else {
-						// Cancel the running Asynchronous Job
+						// Is this a Task Managed Job? Remove it from the Jobs queue if it is pending.
+						serviceTaskManager.cancelJob(jobId);
+						// Is this an Async Job? Send a cancellation to the running service.
 						asyncServiceInstanceManager.cancelInstance(jobId);
 					}
 
@@ -261,20 +245,20 @@ public class ServiceMessageThreadManager {
 			uniqueConsumer.close();
 		} catch (WakeupException wex) {
 			LOGGER.error("Polling Thread forcefully closed", wex);
-			coreLogger.log(String.format("Polling Thread forcefully closed: %s", wex.getMessage()), PiazzaLogger.FATAL);
+			coreLogger.log(String.format("Polling Thread forcefully closed: %s", wex.getMessage()), Severity.CRITICAL);
 			uniqueConsumer.close();
 		} catch (Exception ex) {
 			LOGGER.error("Polling Thread forcefully closed", ex);
-			coreLogger.log(String.format("Polling Thread forcefully closed: %s", ex.getMessage()), PiazzaLogger.FATAL);
+			coreLogger.log(String.format("Polling Thread forcefully closed: %s", ex.getMessage()), Severity.CRITICAL);
 			uniqueConsumer.close();
 		}
 	}
-	
+
 	public ObjectMapper makeObjectMapper() {
 		return new ObjectMapper();
 	}
-	
-	public AtomicBoolean makeAtomicBoolean () {
+
+	public AtomicBoolean makeAtomicBoolean() {
 		return new AtomicBoolean();
 	}
 }

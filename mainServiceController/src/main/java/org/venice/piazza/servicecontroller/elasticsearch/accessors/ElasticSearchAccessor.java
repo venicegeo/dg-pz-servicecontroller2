@@ -28,6 +28,7 @@ import org.springframework.web.client.RestTemplate;
 import org.venice.piazza.servicecontroller.util.CoreServiceProperties;
 
 import model.job.type.ServiceMetadataIngestJob;
+import model.logger.Severity;
 import model.response.ErrorResponse;
 import model.response.PiazzaResponse;
 import model.service.metadata.Service;
@@ -61,7 +62,7 @@ public class ElasticSearchAccessor {
 		SERVICEMETADATA_INGEST_URL = coreServiceProperties.getPzServicemetadataIngestUrl();
 		SERVICEMETADATA_UPDATE_URL = coreServiceProperties.getPzServicemetadataUpdateUrl();
 		SERVICEMETADATA_DELETE_URL = coreServiceProperties.getPzServicemetadataDeleteUrl();
-		logger.log("Search endpoint is " + SERVICEMETADATA_INGEST_URL, logger.DEBUG);
+		logger.log("Search endpoint is " + SERVICEMETADATA_INGEST_URL, Severity.DEBUG);
 
 	}
 
@@ -73,7 +74,7 @@ public class ElasticSearchAccessor {
 	 * @return PiazzaResponse
 	 */
 	public PiazzaResponse save(Service service) {
-		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_INGEST_URL, logger.DEBUG);
+		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_INGEST_URL, Severity.DEBUG);
 		return dispatchElasticSearch(service, SERVICEMETADATA_INGEST_URL);
 	}
 
@@ -85,7 +86,7 @@ public class ElasticSearchAccessor {
 	 * @return PiazzaResponse
 	 */
 	public PiazzaResponse update(Service service) {
-		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_UPDATE_URL, logger.DEBUG);
+		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_UPDATE_URL, Severity.DEBUG);
 
 		return dispatchElasticSearch(service, SERVICEMETADATA_UPDATE_URL);
 	}
@@ -98,7 +99,7 @@ public class ElasticSearchAccessor {
 	 * @return PiazzaResponse
 	 */
 	public PiazzaResponse delete(Service service) {
-		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_DELETE_URL, logger.DEBUG);
+		logger.log("Saving service " + service.getServiceId() + " " + SERVICEMETADATA_DELETE_URL, Severity.DEBUG);
 		return dispatchElasticSearch(service, SERVICEMETADATA_DELETE_URL);
 	}
 	
@@ -127,7 +128,7 @@ public class ElasticSearchAccessor {
 		} catch (Exception exception) {
 			String error = String.format("Could not Index ServiceMetaData to Service: %s", exception.getMessage());
 			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.ERROR);
+			logger.log(error, Severity.ERROR);
 			return new ErrorResponse("Error connecting to ServiceMetadata Service: " + exception.getMessage(), "ServiceController");
 		}
 	}

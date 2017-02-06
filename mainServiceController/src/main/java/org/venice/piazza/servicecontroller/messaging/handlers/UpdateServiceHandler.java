@@ -29,6 +29,8 @@ import org.venice.piazza.servicecontroller.elasticsearch.accessors.ElasticSearch
 
 import model.job.PiazzaJobType;
 import model.job.type.UpdateServiceJob;
+import model.logger.AuditElement;
+import model.logger.Severity;
 import model.response.PiazzaResponse;
 import model.service.metadata.Service;
 import util.PiazzaLogger;
@@ -68,7 +70,7 @@ public class UpdateServiceHandler implements PiazzaJobHandler {
 			// Get the ResourceMetadata
 			Service sMetadata = job.data;
 			LOGGER.info("serviceMetadata received is " + sMetadata);
-			coreLogger.log("serviceMetadata received is " + sMetadata, PiazzaLogger.INFO);
+			coreLogger.log("serviceMetadata received is " + sMetadata, Severity.INFORMATIONAL);
 			String result = handle(sMetadata);
 
 			if (result.length() > 0) {
@@ -81,11 +83,11 @@ public class UpdateServiceHandler implements PiazzaJobHandler {
 				return new ResponseEntity<String>(resultList.toString(), HttpStatus.OK);
 				
 			} else {
-				coreLogger.log("No result response from the handler, something went wrong", PiazzaLogger.ERROR);
+				coreLogger.log("No result response from the handler, something went wrong", Severity.ERROR);
 				return new ResponseEntity<String>("UpdateServiceHandler handle didn't work", HttpStatus.UNPROCESSABLE_ENTITY);
 			}
 		} else {
-			 coreLogger.log("A null PiazzaJobRequest was passed in. Returning null", PiazzaLogger.ERROR);
+			 coreLogger.log("A null PiazzaJobRequest was passed in. Returning null", Severity.ERROR);
 			 return new ResponseEntity<String>("A Null PiazzaJobRequest was received", HttpStatus.BAD_REQUEST);
 		}
 	}
@@ -99,17 +101,21 @@ public class UpdateServiceHandler implements PiazzaJobHandler {
         String result = "";
         try {
 	        if (sMetadata != null) {
-	        	coreLogger.log(String.format("Updating a registered service with ID %s", sMetadata.getServiceId()), PiazzaLogger.INFO);
+	        	coreLogger.log(String.format("Updating a registered service with ID %s", sMetadata.getServiceId()), Severity.INFORMATIONAL);
 
 				result = accessor.update(sMetadata);
 				
 				if (result.length() > 0) {
-				   coreLogger.log("The service " + sMetadata.getResourceMetadata().name + " was updated with id " + result, PiazzaLogger.INFO);
+				   coreLogger.log("The service " + sMetadata.getResourceMetadata().name + " was updated with id " + result, Severity.INFORMATIONAL);
+				   
+					coreLogger.log(String.format("Service was updated %s", sMetadata.getServiceId()), Severity.INFORMATIONAL,
+							new AuditElement("serviceController", "updatedRegisteredService", sMetadata.getServiceId()));
 				   // Only when the user service data is updated successfully then
 				   // update elastic search
 				    PiazzaResponse response = elasticAccessor.update(sMetadata);
 				} else {
-					   coreLogger.log("The service " + sMetadata.getResourceMetadata().name + " was NOT updated", PiazzaLogger.INFO);
+					   coreLogger.log("The service " + sMetadata.getResourceMetadata().name + " was NOT updated", Severity.INFORMATIONAL);
+					   coreLogger.log("The service was NOT updated", Severity.ERROR, new AuditElement("serviceController", "failedToUpdateService", sMetadata.getServiceId()));
 				}
 				// If an Id was returned then send a kafka message back updating the job iD 
 				// with the resourceId
@@ -125,7 +131,7 @@ public class UpdateServiceHandler implements PiazzaJobHandler {
 	        }
         } catch (IllegalArgumentException ex) {
         	LOGGER.error("IllegalArgumentException occurred", ex);
-        	coreLogger.log(ex.getMessage(), PiazzaLogger.ERROR);
+        	coreLogger.log(ex.getMessage(), Severity.ERROR);
         }
 
 		return result;

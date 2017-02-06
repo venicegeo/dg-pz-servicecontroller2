@@ -119,9 +119,10 @@ public class AsyncServiceWorkerTest {
 
 	/**
 	 * Test service execution with successful response
+	 * @throws InterruptedException 
 	 */
 	@Test
-	public void testExecute() throws JsonProcessingException {
+	public void testExecute() throws JsonProcessingException, InterruptedException {
 		// Mock the Response
 		JobResponse mockResponse = new JobResponse("instanceId");
 		Mockito.doReturn(new ResponseEntity<String>(objectMapper.writeValueAsString(mockResponse), HttpStatus.OK))
@@ -134,9 +135,10 @@ public class AsyncServiceWorkerTest {
 
 	/**
 	 * Test error handling for service returning a 500 error
+	 * @throws InterruptedException 
 	 */
 	@Test
-	public void testExecutionErrorResponse() {
+	public void testExecutionErrorResponse() throws InterruptedException {
 		// Mock an error coming from the execution service
 		Mockito.doReturn(new ResponseEntity<String>("Error.", HttpStatus.INTERNAL_SERVER_ERROR)).when(executeServiceHandler)
 				.handle(any(ExecuteServiceJob.class));
@@ -149,9 +151,10 @@ public class AsyncServiceWorkerTest {
 
 	/**
 	 * Tests a Service returning an invalid payload
+	 * @throws InterruptedException 
 	 */
 	@Test
-	public void testExecutionErrorFormat() {
+	public void testExecutionErrorFormat() throws InterruptedException {
 		// Mock the Response
 		Mockito.doReturn(new ResponseEntity<String>("Everything is fine.", HttpStatus.OK)).when(executeServiceHandler)
 				.handle(any(ExecuteServiceJob.class));

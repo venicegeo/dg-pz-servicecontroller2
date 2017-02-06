@@ -45,6 +45,7 @@ import messaging.job.KafkaClientFactory;
 import model.job.result.type.DataResult;
 import model.job.result.type.ErrorResult;
 import model.job.type.ExecuteServiceJob;
+import model.logger.Severity;
 import model.response.JobResponse;
 import model.service.metadata.Service;
 import model.status.StatusUpdate;
@@ -66,7 +67,7 @@ public class AsynchronousServiceWorker {
 	@Value("${async.delete.endpoint}")
 	private String DELETE_ENDPOINT;
 	@Value("${vcap.services.pz-kafka.credentials.host}")
-	private String KAFKA_HOST_PORT;
+	private String KAFKA_HOSTS;
 	@Value("${SPACE}")
 	private String SPACE;
 	@Value("${async.status.error.limit}")
@@ -86,12 +87,10 @@ public class AsynchronousServiceWorker {
 	private ObjectMapper objectMapper = new ObjectMapper();
 
 	private final static Logger LOGGER = LoggerFactory.getLogger(AsynchronousServiceWorker.class);
-	
+
 	@PostConstruct
 	public void initialize() {
-		String KAFKA_HOST = KAFKA_HOST_PORT.split(":")[0];
-		String KAFKA_PORT = KAFKA_HOST_PORT.split(":")[1];
-		producer = KafkaClientFactory.getProducer(KAFKA_HOST, KAFKA_PORT);
+		producer = KafkaClientFactory.getProducer(KAFKA_HOSTS);
 	}
 
 	/**
@@ -99,11 +98,12 @@ public class AsynchronousServiceWorker {
 	 * 
 	 * @param jobType
 	 *            The Piazza Job Type, describing everything about the Service execution.
+	 * @throws InterruptedException 
 	 */
 	@Async
-	public void executeService(ExecuteServiceJob job) {
+	public void executeService(ExecuteServiceJob job) throws InterruptedException {
 		// Log the Request
-		logger.log(String.format("Processing Asynchronous User Service with Job ID %s", job.getJobId()), PiazzaLogger.INFO);
+		logger.log(String.format("Processing Asynchronous User Service with Job ID %s", job.getJobId()), Severity.INFORMATIONAL);
 		// Handle the external HTTP execution to the Service
 		ResponseEntity<String> response = executeServiceHandler.handle(job);
 		if (!response.getStatusCode().is2xxSuccessful()) {
@@ -111,7 +111,7 @@ public class AsynchronousServiceWorker {
 			String errorMessage = String.format(
 					"Asynchronous Service Failed to Execute for Job ID %s to Service ID %s. Status Code %s was returned with Message %s",
 					job.getJobId(), job.data.getServiceId(), response.getStatusCode(), response.getBody());
-			logger.log(errorMessage, PiazzaLogger.ERROR);
+			logger.log(errorMessage, Severity.ERROR);
 			processErrorStatus(job.getJobId(), StatusUpdate.STATUS_ERROR, errorMessage);
 		} else {
 			try {
@@ -123,7 +123,7 @@ public class AsynchronousServiceWorker {
 				accessor.addAsyncServiceInstance(instance);
 				// Log the successful start of asynchronous service execution
 				logger.log(String.format("Successful start of Asynchronous Execution for Job ID %S with Service ID %s and Instance ID %s",
-						instance.getJobId(), instance.getServiceId(), instance.getInstanceId()), PiazzaLogger.INFO);
+						instance.getJobId(), instance.getServiceId(), instance.getInstanceId()), Severity.INFORMATIONAL);
 			} catch (IOException exception) {
 				// The response from the User Service did not conform to the proper model. Log this and flag as a
 				// failure.
@@ -131,7 +131,7 @@ public class AsynchronousServiceWorker {
 						"Could not parse the 2xx HTTP Status response from User Service Execution for Job ID %s. It did not conform to the typical Response format. Details: %s",
 						job.getJobId(), exception.getMessage());
 				LOGGER.error(errorMessage, exception);
-				logger.log(errorMessage, PiazzaLogger.ERROR);
+				logger.log(errorMessage, Severity.ERROR);
 				processErrorStatus(job.getJobId(), StatusUpdate.STATUS_ERROR, errorMessage);
 			}
 		}
@@ -176,7 +176,7 @@ public class AsynchronousServiceWorker {
 					// The message could not be serialized. Record this.
 					LOGGER.error("Json processing error occured", exception);
 					logger.log("Could not send Running Status Message to Job Manager. Error serializing Status: " + exception.getMessage(),
-							PiazzaLogger.ERROR);
+							Severity.ERROR);
 				}
 			} else if (status.getStatus().equals(StatusUpdate.STATUS_SUCCESS)) {
 				// Queue up a subsequent request to get the Result of the Instance
@@ -190,7 +190,7 @@ public class AsynchronousServiceWorker {
 					ErrorResult errorResult = (ErrorResult) status.getResult();
 					errorMessage = String.format("%s Details: %s, %s", errorMessage, errorResult.getMessage(), errorResult.getDetails());
 				}
-				logger.log(errorMessage, PiazzaLogger.ERROR);
+				logger.log(errorMessage, Severity.ERROR);
 				processErrorStatus(instance.getJobId(), status.getStatus(), errorMessage);
 			} else {
 				// If it's an unknown status, then we can't process it.
@@ -198,16 +198,16 @@ public class AsynchronousServiceWorker {
 				logger.log(String.format(
 						"Unknown Status %s encountered for Service ID %s Instance %s under Job ID %s. The number of Errors has been incremented (%s)",
 						status.getStatus(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId(),
-						instance.getNumberErrorResponses()), PiazzaLogger.WARNING);
+						instance.getNumberErrorResponses()), Severity.WARNING);
 			}
 		} catch (HttpClientErrorException | HttpServerErrorException exception) {
 			updateFailureCount(instance);
 			String error = String.format(
 					"HTTP Error Status %s encountered for Service ID %s Instance %s under Job ID %s. The number of Errors has been incremented (%s)",
-					exception.getStatusCode().toString(), instance.getServiceId(), instance.getInstanceId(),
-					instance.getJobId(), instance.getNumberErrorResponses());
+					exception.getStatusCode().toString(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId(),
+					instance.getNumberErrorResponses());
 			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.WARNING);
+			logger.log(error, Severity.WARNING);
 		} catch (Exception exception) {
 			updateFailureCount(instance);
 			String error = String.format(
@@ -215,7 +215,7 @@ public class AsynchronousServiceWorker {
 					exception.getMessage(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId(),
 					instance.getNumberErrorResponses());
 			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.WARNING);
+			logger.log(error, Severity.WARNING);
 		}
 	}
 
@@ -234,7 +234,7 @@ public class AsynchronousServiceWorker {
 			String errorMessage = String.format(
 					"Job ID %s for Service ID %s Instance ID %s has failed too many times during periodic Status Checks. This Job is being marked as a failure.",
 					instance.getJobId(), instance.getServiceId(), instance.getInstanceId());
-			logger.log(errorMessage, PiazzaLogger.ERROR);
+			logger.log(errorMessage, Severity.ERROR);
 			// Remove this from the Collection of tracked instance Jobs.
 			accessor.deleteAsyncServiceInstance(instance.getJobId());
 			// Send a Failure message back to the Job Manager via Kafka.
@@ -256,14 +256,14 @@ public class AsynchronousServiceWorker {
 	private void processSuccessStatus(Service service, AsyncServiceInstance instance) {
 		// Log
 		logger.log(String.format("Handling Successful status of Instance %s for Service %s under Job ID %s", instance.getInstanceId(),
-				instance.getServiceId(), instance.getJobId()), PiazzaLogger.INFO);
+				instance.getServiceId(), instance.getJobId()), Severity.INFORMATIONAL);
 		// Make a request to the results endpoint to get the results of the Service
 		String url = String.format("%s/%s/%s", service.getUrl(), RESULTS_ENDPOINT, instance.getInstanceId());
 		try {
 			ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 			String dataId = uuidFactory.getUUID();
 			// Get the Result of the Service
-			DataResult result = executeServiceHandler.processExecutionResult(instance.getOutputType(), producer,
+			DataResult result = executeServiceHandler.processExecutionResult(service, instance.getOutputType(), producer,
 					StatusUpdate.STATUS_SUCCESS, response, dataId);
 			// Send the Completed Status to the Job Manager, including the Result
 			StatusUpdate statusUpdate = new StatusUpdate(StatusUpdate.STATUS_SUCCESS);
@@ -280,7 +280,7 @@ public class AsynchronousServiceWorker {
 					exception.getStatusCode().toString(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId(),
 					instance.getNumberErrorResponses());
 			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.WARNING);
+			logger.log(error, Severity.WARNING);
 		} catch (Exception exception) {
 			updateFailureCount(instance);
 			String error = String.format(
@@ -288,7 +288,7 @@ public class AsynchronousServiceWorker {
 					exception.getMessage(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId(),
 					instance.getNumberErrorResponses());
 			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.WARNING);
+			logger.log(error, Severity.WARNING);
 		}
 	}
 
@@ -319,8 +319,7 @@ public class AsynchronousServiceWorker {
 		} catch (JsonProcessingException exception) {
 			// The message could not be serialized. Record this.
 			LOGGER.error("Could not send Error Status to Job Manager. Error serializing Status", exception);
-			logger.log("Could not send Error Status to Job Manager. Error serializing Status: " + exception.getMessage(),
-					PiazzaLogger.ERROR);
+			logger.log("Could not send Error Status to Job Manager. Error serializing Status: " + exception.getMessage(), Severity.ERROR);
 		}
 	}
 
@@ -332,23 +331,24 @@ public class AsynchronousServiceWorker {
 	 */
 	@Async
 	public void sendCancellationStatus(AsyncServiceInstance instance) {
-		// Send the DELETE request to the external User Service
-		Service service = accessor.getServiceById(instance.getServiceId());
-		if (service == null) {
-			return;
-		}
-		String url = String.format("%s/%s/%s", service.getUrl(), DELETE_ENDPOINT, instance.getInstanceId());
-		try {
-			restTemplate.delete(url);
-		} catch (HttpClientErrorException | HttpServerErrorException exception) {
-			String error = String.format("Error Cancelling Service Instance on external User Service: HTTP Error Status %s encountered for Service ID %s Instance %s under Job ID %s. No subsequent calls will be made.",
-					exception.getStatusCode().toString(), instance.getServiceId(), instance.getInstanceId(),
-					instance.getJobId());
-			LOGGER.error(error, exception);
-			logger.log(error, PiazzaLogger.WARNING);
-		}
 		// Remove this from the Instance Table
 		accessor.deleteAsyncServiceInstance(instance.getJobId());
+
+		// Send the DELETE request to the external User Service
+		Service service = accessor.getServiceById(instance.getServiceId());
+		if (service != null) {
+			String url = String.format("%s/%s/%s", service.getUrl(), DELETE_ENDPOINT, instance.getInstanceId());
+			try {
+				restTemplate.delete(url);
+			} catch (HttpClientErrorException | HttpServerErrorException exception) {
+				String error = String.format(
+						"Error Cancelling Service Instance on external User Service: HTTP Error Status %s encountered for Service ID %s Instance %s under Job ID %s. No subsequent calls will be made.",
+						exception.getStatusCode().toString(), instance.getServiceId(), instance.getInstanceId(), instance.getJobId());
+				LOGGER.error(error, exception);
+				logger.log(error, Severity.WARNING);
+			}
+		}
+
 		// Send the Kafka Message for successful Cancellation status
 		try {
 			producer.send(
@@ -358,7 +358,7 @@ public class AsynchronousServiceWorker {
 					"Error sending Cancelled Status from Job %s: %s. The Job was cancelled, but its status will not be updated in the Job Manager.",
 					instance.getJobId(), jsonException.getMessage());
 			LOGGER.error(error, jsonException);
-			logger.log(error, PiazzaLogger.ERROR);
+			logger.log(error, Severity.ERROR);
 		}
 	}
 }

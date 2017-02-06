@@ -15,27 +15,30 @@
  *******************************************************************************/
 package org.venice.piazza.servicecontroller.messaging.handlers;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.venice.piazza.servicecontroller.data.mongodb.accessors.MongoAccessor;
 import org.venice.piazza.servicecontroller.elasticsearch.accessors.ElasticSearchAccessor;
+import org.venice.piazza.servicecontroller.taskmanaged.ServiceTaskManager;
+
 import model.job.PiazzaJobType;
 import model.job.type.RegisterServiceJob;
+import model.logger.AuditElement;
+import model.logger.Severity;
 import model.response.ErrorResponse;
 import model.response.PiazzaResponse;
 import model.service.metadata.Service;
-
 import util.PiazzaLogger;
 import util.UUIDFactory;
 
 /**
- * Handler for handling registerService requests.  This handler is used 
- * when register-service kafka topics are received or when clients utilize the 
- * ServiceController registerService web service.
+ * Handler for handling registerService requests. This handler is used when register-service kafka topics are received
+ * or when clients utilize the ServiceController registerService web service.
+ * 
  * @author mlynum
  * @version 1.0
  *
@@ -50,8 +53,9 @@ public class RegisterServiceHandler implements PiazzaJobHandler {
 	private PiazzaLogger coreLogger;
 	@Autowired
 	private UUIDFactory uuidFactory;
-	
-	private static final Logger LOGGER = LoggerFactory.getLogger(RegisterServiceHandler.class);
+	@Autowired
+	private ServiceTaskManager serviceTaskManager;
+
 	private static final long HTTP_REQUEST_TIMEOUT = 600;
 
 	/**
@@ -59,27 +63,32 @@ public class RegisterServiceHandler implements PiazzaJobHandler {
 	 * 
 	 * @see org.venice.piazza.servicecontroller.messaging.handlers.Handler#handle(model.job.PiazzaJobType)
 	 */
-	@SuppressWarnings("deprecation")
 	@Override
 	public ResponseEntity<String> handle(PiazzaJobType jobRequest) {
-		coreLogger.log("Registering a Service", PiazzaLogger.INFO);
+		coreLogger.log("Registering a Service", Severity.INFORMATIONAL);
 		RegisterServiceJob job = (RegisterServiceJob) jobRequest;
 
 		if (job != null) {
 			// Get the Service metadata
 			Service serviceMetadata = job.data;
-			coreLogger.log("serviceMetadata received is " + serviceMetadata, PiazzaLogger.INFO);
+			coreLogger.log("serviceMetadata received is " + serviceMetadata, Severity.INFORMATIONAL);
 
 			String result = handle(serviceMetadata);
 			if (result.length() > 0) {
 				String responseString = "{\"resourceId\":" + "\"" + result + "\"}";
+
+				coreLogger.log(String.format("Service registered %s", serviceMetadata.getServiceId()), Severity.INFORMATIONAL,
+						new AuditElement("serviceController", "registeredExternalService", serviceMetadata.getServiceId()));
+
 				return new ResponseEntity<String>(responseString, HttpStatus.OK);
 			} else {
-				coreLogger.log("No result response from the handler, something went wrong", PiazzaLogger.ERROR);
+				coreLogger.log("No result response from the handler, something went wrong", Severity.ERROR);
+				coreLogger.log(String.format("The service was NOT registered id %s", serviceMetadata.getServiceId()), Severity.ERROR,
+						new AuditElement("serviceController", "registerServiceError", serviceMetadata.getServiceId()));
 				return new ResponseEntity<String>("RegisterServiceHandler handle didn't work", HttpStatus.UNPROCESSABLE_ENTITY);
 			}
 		} else {
-			coreLogger.log("No RegisterServiceJob", PiazzaLogger.ERROR);
+			coreLogger.log("No RegisterServiceJob", Severity.ERROR);
 			return new ResponseEntity<String>("No RegisterServiceJob", HttpStatus.BAD_REQUEST);
 		}
 	}
@@ -95,27 +104,46 @@ public class RegisterServiceHandler implements PiazzaJobHandler {
 		if (service != null) {
 			resultServiceId = uuidFactory.getUUID();
 			service.setServiceId(resultServiceId);
-			
-			// set default request timeout			
+
+			// Set default request timeout
 			if (null == service.getTimeout()) {
 				service.setTimeout(HTTP_REQUEST_TIMEOUT);
 			}
 
+			// Set the Administrators of the service, if none have been specified.
+			if ((service.getIsTaskManaged() != null) && (service.getIsTaskManaged().booleanValue())) {
+				String createdBy = service.getResourceMetadata().getCreatedBy();
+				if (service.getTaskAdministrators() == null) {
+					// If no administration list has been specified, then create one by default.
+					service.setTaskAdministrators(new ArrayList<String>());
+					service.getTaskAdministrators().add(createdBy);
+				} else {
+					// Ensure that the service creator is included in the list of administrators.
+					if (service.getTaskAdministrators().contains(createdBy) == false) {
+						service.getTaskAdministrators().add(createdBy);
+					}
+				}
+
+				// Create the Task Management Service Queue for this Service
+				serviceTaskManager.createServiceQueue(resultServiceId);
+			}
+
+			// Commit
 			resultServiceId = mongoAccessor.save(service);
-			coreLogger.log("The result of the save is " + resultServiceId, PiazzaLogger.DEBUG);
+			coreLogger.log("The result of the save is " + resultServiceId, Severity.DEBUG);
 
 			PiazzaResponse response = elasticAccessor.save(service);
 
 			if (ErrorResponse.class.isInstance(response)) {
 				ErrorResponse errResponse = (ErrorResponse) response;
-				coreLogger.log("The result of the save is " + errResponse.message, PiazzaLogger.DEBUG);
+				coreLogger.log("The result of the save is " + errResponse.message, Severity.DEBUG);
 
 			} else {
-				coreLogger.log("Successfully stored service " + service.getServiceId(), PiazzaLogger.DEBUG);
+				coreLogger.log("Successfully stored service " + service.getServiceId(), Severity.DEBUG);
 
 			}
-		} 
-		
+		}
+
 		return resultServiceId;
 	}
 }

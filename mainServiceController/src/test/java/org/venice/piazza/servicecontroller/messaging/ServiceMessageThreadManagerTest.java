@@ -49,6 +49,7 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.venice.piazza.servicecontroller.controller.ServiceController;
 import org.venice.piazza.servicecontroller.data.mongodb.accessors.MongoAccessor;
@@ -91,27 +92,20 @@ public class ServiceMessageThreadManagerTest {
 	
 	@Mock 
 	private PiazzaLogger loggerMock;
-	
 	@Mock
 	private MongoAccessor accessorMock;
-	
 	@Mock
 	private Service serviceMock;
-	
 	@Mock
 	private ObjectMapper omMock;
 	@Mock
 	private KafkaProducer<String, String> producerMock;
 	@Mock
 	private KafkaConsumer<String, String> consumerMock;
-	
 	@Mock
 	private KafkaClientFactory kcFactoryMock;
-
-	
 	@Mock
 	private CoreServiceProperties propertiesMock;
-
 	
 	ResourceMetadata rm = null;
 	Service service = null;
@@ -132,8 +126,12 @@ public class ServiceMessageThreadManagerTest {
 		service.setMethod( "POST");
 		service.setResourceMetadata(rm);
 		service.setUrl("http://localhost:8082/string/toUpper");
-		MockitoAnnotations.initMocks(this);			
-
+		MockitoAnnotations.initMocks(this);	
+		
+		// Inject test variables for kafka
+		ReflectionTestUtils.setField(smtManager, "KAFKA_HOSTS", "localhost:9092");
+		ReflectionTestUtils.setField(smtManager, "KAFKA_GROUP", "test-sc");
+		ReflectionTestUtils.setField(smtManager, "SPACE", "unittest");
     }
 	
 	@Test
@@ -216,25 +214,6 @@ public class ServiceMessageThreadManagerTest {
 		smtManager.pollServiceJobs();
 
     }
-	
-	/**
-	 * Test aborting Polls
-	 */
-	@Test
-	public void testAbortPolling() {
-
-		Mockito.when(propertiesMock.getKafkaGroup()).thenReturn("ServiceController Group");
-		Mockito.when(propertiesMock.getKafkaHost()).thenReturn("localhost:8087");		
-		PowerMockito.mockStatic(KafkaClientFactory.class);
-		PowerMockito.when(KafkaClientFactory.getConsumer(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())).thenReturn(consumerMock);
-		Mockito.doNothing().when(consumerMock).subscribe(Mockito.anyList());
-
-		ConsumerRecords<String, String> consumerRecords = new ConsumerRecords<String, String>(null);
-		Mockito.when(consumerMock.poll(Mockito.anyLong())).thenReturn(consumerRecords);
-		smtManager.pollAbortServiceJobs();
-
-    }	
-	 
 
 	static void setFinalStatic(Field field, Object newValue) throws Exception {
 	        field.setAccessible(true);

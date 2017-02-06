@@ -6,4 +6,4 @@ popd > /dev/null
 
 cd mainServiceController
 
-mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent install -Pcoverage-per-test
+mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent install -Pcoverage-per-test org.jacoco:jacoco-maven-plugin:report -DdataFile=$root/target/jacoco.exec

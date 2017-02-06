@@ -51,6 +51,7 @@ import model.job.metadata.ResourceMetadata;
 import model.job.type.ExecuteServiceJob;
 import model.job.type.ListServicesJob;
 import model.job.type.SearchServiceJob;
+import model.logger.Severity;
 import model.service.SearchCriteria;
 import model.service.metadata.ExecuteServiceData;
 import model.service.metadata.Service;
@@ -67,16 +68,12 @@ public class ExecuteServiceHandlerTest {
 	
 	@InjectMocks
 	private ExecuteServiceHandler executeServiceHandler;
-	
 	@Mock 
 	private PiazzaLogger loggerMock;
-	
 	@Mock
 	private MongoAccessor accessorMock;
-	
 	@Mock
 	private Service serviceMock;
-	
 	@Mock
 	private ObjectMapper omMock;
 	
@@ -128,148 +125,159 @@ public class ExecuteServiceHandlerTest {
 		movieService.setServiceId("a842aae2-bd74-4c4b-9a65-c45e8cd9060f");
 		movieService.setUrl("http://localhost:8087/jumpstart/moviequotewelcome");
 		MockitoAnnotations.initMocks(this);	
-
     }
 	
 	/**
 	 * Test that a list of services could be retrieved.
+	 * 
+	 * @throws InterruptedException
 	 */
 	@Test
-	public void testExecuteServiceSuccess() {
+	public void testExecuteServiceSuccess() throws InterruptedException {
 		ExecuteServiceJob job = new ExecuteServiceJob();
 		// Setup executeServiceData
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "a842aae2-bd74-4c4b-9a65-c45e8cd9060f";
-		edata.setServiceId(serviceId);	
+		edata.setServiceId(serviceId);
 		// Now tie the data to the job
 		job.data = edata;
-		
+
 		String responseServiceString = "Run results";
 
-		ResponseEntity<String> responseEntity = new  ResponseEntity<String>(responseServiceString, HttpStatus.OK);
+		ResponseEntity<String> responseEntity = new ResponseEntity<String>(responseServiceString, HttpStatus.OK);
 
-		final ExecuteServiceHandler esMock = Mockito.spy (executeServiceHandler);
+		final ExecuteServiceHandler esMock = Mockito.spy(executeServiceHandler);
 
-		Mockito.doReturn(responseEntity).when(esMock).handle(edata);				
+		Mockito.doReturn(responseEntity).when(esMock).handle(edata);
 		ResponseEntity<String> result = esMock.handle(job);
-	
-		assertEquals ("The response entity was correct for this describe request", responseEntity, result);
-		assertEquals ("The response code is 200", responseEntity.getStatusCode(), HttpStatus.OK);
-		assertEquals ("The body of the response is correct", responseEntity.getBody(), responseServiceString);
 
-
+		assertEquals("The response entity was correct for this describe request", responseEntity, result);
+		assertEquals("The response code is 200", responseEntity.getStatusCode(), HttpStatus.OK);
+		assertEquals("The body of the response is correct", responseEntity.getBody(), responseServiceString);
 	}
 	
 	/**
 	 * Test that there is a failure when trying to send in a null job
+	 * 
+	 * @throws InterruptedException
 	 */
 	@Test
-	public void testExecuteNullJob() {
+	public void testExecuteNullJob() throws InterruptedException {
 		ExecuteServiceJob job = null;
-	
+
 		ResponseEntity<String> result = executeServiceHandler.handle(job);
-		assertEquals ("The response code is 404", result.getStatusCode(), HttpStatus.BAD_REQUEST);
+		assertEquals("The response code is 404", result.getStatusCode(), HttpStatus.BAD_REQUEST);
 
 	}
-	/** 
+	
+	/**
 	 * tests what happens when the mime type is not specified for the payload
+	 * 
+	 * @throws InterruptedException
 	 */
-    @Test
-	public void testHandleWithNoParamsBodyPayloadNoMimeType() {
-		
-		
+	@Test
+	public void testHandleWithNoParamsBodyPayloadNoMimeType() throws InterruptedException {
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "a842aae2-bd74-4c4b-9a65-c45e8cd9060f";
 		edata.setServiceId(serviceId);
-		
-		HashMap<String,DataType> dataInputs = new HashMap<String,DataType>();
+
+		HashMap<String, DataType> dataInputs = new HashMap<String, DataType>();
 		String istring = "The rain in Spain falls mainly in the plain";
 		BodyDataType body = new BodyDataType();
 		body.content = istring;
 		dataInputs.put("Body", body);
 		edata.setDataInputs(dataInputs);
-		
+
 		URI uri = URI.create("http://localhost:8087/jumpstart/string/convert");
 		// Setup mocks
 		Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(convertService);
-        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
-        Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
+		// Mockito.doNothing().when(loggerMock).log(Mockito.anyString(),
+		// Severity.INFORMATIONAL);
+		Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
 
 		ResponseEntity<String> retVal = executeServiceHandler.handle(edata);
 		System.out.println(retVal);
-		
 
 		assertEquals(retVal.getStatusCode(), HttpStatus.BAD_REQUEST);
 		assertTrue("The proper message was returned", retVal.getBody().contains("Body mime type not specified"));
-	    
+
 	}
-    @Test
-	public void testHandleWithNoParamsBodyPayload() {
-		
-		
+	
+	/**
+	 * Testing handle without payload
+	 * 
+	 * @throws InterruptedException
+	 */
+	@Test
+	public void testHandleWithNoParamsBodyPayload() throws InterruptedException {
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "a842aae2-bd74-4c4b-9a65-c45e8cd9060f";
 		edata.setServiceId(serviceId);
-		
-		HashMap<String,DataType> dataInputs = new HashMap<String,DataType>();
+
+		HashMap<String, DataType> dataInputs = new HashMap<String, DataType>();
 		String istring = "The rain in Spain falls mainly in the plain";
 		BodyDataType body = new BodyDataType();
 		body.content = istring;
 		dataInputs.put("Body", body);
 		body.mimeType = "application/json";
 		edata.setDataInputs(dataInputs);
-		
+
 		URI uri = URI.create("http://localhost:8087/jumpstart/string/convert");
 		// Setup mocks
-		Mockito.when(restTemplateMock.postForEntity(Mockito.eq(uri),Mockito.any(Object.class),Mockito.eq(String.class))).thenReturn(new ResponseEntity<String>("testExecuteService",HttpStatus.OK));
+		Mockito.when(
+				restTemplateMock.postForEntity(Mockito.eq(uri), Mockito.any(Object.class), Mockito.eq(String.class)))
+				.thenReturn(new ResponseEntity<String>("testExecuteService", HttpStatus.OK));
 		Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(convertService);
-        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
-        Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
+		// Mockito.doNothing().when(loggerMock).log(Mockito.anyString(),
+		// Severity.INFORMATIONAL);
+		Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
 
 		ResponseEntity<String> retVal = executeServiceHandler.handle(edata);
 		System.out.println(retVal);
-	    
+
 		assertTrue(retVal.getBody().contains("testExecuteService"));
-	    
 	}
 	
 	@Test
-	public void testHandleWithMapInputsPost() {
+	public void testHandleWithMapInputsPost() throws InterruptedException {
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "8";
 		edata.setServiceId(serviceId);
-		
-		HashMap<String,DataType> dataInputs = new HashMap<String,DataType>();
+
+		HashMap<String, DataType> dataInputs = new HashMap<String, DataType>();
 		TextDataType tdt = new TextDataType();
 		tdt.content = "Marge";
-		dataInputs.put("name",tdt);
+		dataInputs.put("name", tdt);
 		edata.setDataInputs(dataInputs);
-		
-	    URI uri = URI.create("http://localhost:8082/string/toUpper");
-        Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
-        Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(service);
-        Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
-		when(restTemplateMock.postForEntity(Mockito.eq(uri),Mockito.any(Object.class),Mockito.eq(String.class))).thenReturn(new ResponseEntity<String>("testExecuteService",HttpStatus.FOUND));
+
+		URI uri = URI.create("http://localhost:8082/string/toUpper");
+		Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
+		Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(service);
+		// Mockito.doNothing().when(loggerMock).log(Mockito.anyString(),
+		// Severity.INFORMATIONAL);
+		when(restTemplateMock.postForEntity(Mockito.eq(uri), Mockito.any(Object.class), Mockito.eq(String.class)))
+				.thenReturn(new ResponseEntity<String>("testExecuteService", HttpStatus.FOUND));
 
 		MongoAccessor mockMongo = mock(MongoAccessor.class);
 		when(mockMongo.getServiceById("8")).thenReturn(service);
 		ResponseEntity<String> retVal = executeServiceHandler.handle(edata);
-	    assertTrue(retVal.getBody().contains("testExecuteService"));
+		assertTrue(retVal.getBody().contains("testExecuteService"));
 	}
 
 	/**
 	 * Tests executing web service with GET method
+	 * @throws InterruptedException 
 	 */
 	@Test
-	public void testHandleWithMapInputsGet() {
+	public void testHandleWithMapInputsGet() throws InterruptedException {
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "a842aae2-bd74-4c4b-9a65-c45e8cd9060f";
 		edata.setServiceId(serviceId);
-		HashMap<String,DataType> dataInputs = new HashMap<String,DataType>();
+		HashMap<String, DataType> dataInputs = new HashMap<String, DataType>();
 		URLParameterDataType tdt = new URLParameterDataType();
 		tdt.content = "Marge";
 
-		dataInputs.put("name",tdt);
+		dataInputs.put("name", tdt);
 		edata.setDataInputs(dataInputs);
 
 		ObjectMapper mapper = new ObjectMapper();
@@ -280,17 +288,19 @@ public class ExecuteServiceHandlerTest {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		
-	    URI uri = URI.create("http://localhost:8087/jumpstart/moviequotewelcome?name=Marge");
+
+		URI uri = URI.create("http://localhost:8087/jumpstart/moviequotewelcome?name=Marge");
 		Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
-	    Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(movieService);
-	    Mockito.doNothing().when(loggerMock).log(Mockito.anyString(), Mockito.anyString());
-		Mockito.when(restTemplateMock.getForEntity(Mockito.eq(uri),Mockito.eq(String.class))).thenReturn(new ResponseEntity<String>("testExecuteService",HttpStatus.FOUND));
-			
+		Mockito.when(accessorMock.getServiceById(serviceId)).thenReturn(movieService);
+		// Mockito.doNothing().when(loggerMock).log(Mockito.anyString(),
+		// Severity.INFORMATIONAL);
+		Mockito.when(restTemplateMock.getForEntity(Mockito.eq(uri), Mockito.eq(String.class)))
+				.thenReturn(new ResponseEntity<String>("testExecuteService", HttpStatus.FOUND));
+
 		when(accessorMock.getServiceById(serviceId)).thenReturn(movieService);
 
 		ResponseEntity<String> retVal = executeServiceHandler.handle(edata);
-	    assertTrue(retVal.getBody().contains("testExecuteService"));
+		assertTrue(retVal.getBody().contains("testExecuteService"));
 	}
 	
 	/**
@@ -302,35 +312,32 @@ public class ExecuteServiceHandlerTest {
 		ExecuteServiceData edata = new ExecuteServiceData();
 		String serviceId = "8";
 		edata.setServiceId(serviceId);
-		
-		HashMap<String,DataType> dataInputs = new HashMap<String,DataType>();
+
+		HashMap<String, DataType> dataInputs = new HashMap<String, DataType>();
 		TextDataType tdt = new TextDataType();
 		tdt.content = "Marge";
-		dataInputs.put("name",tdt);
+		dataInputs.put("name", tdt);
 		edata.setDataInputs(dataInputs);
-		
-		
-	    URI uri = URI.create("http://localhost:8082/string/toUpper");
-       
+
+		URI uri = URI.create("http://localhost:8082/string/toUpper");
+
 		try {
-			final ExecuteServiceHandler esMock = Mockito.spy (executeServiceHandler);
-			
+			final ExecuteServiceHandler esMock = Mockito.spy(executeServiceHandler);
+
 			// Now create the serialized objects to test against
 			Map<String, DataType> postObjects = new HashMap<>();
 			postObjects.put("name", tdt);
-	        Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
+			Mockito.when(serviceMock.getUrl()).thenReturn(uri.toString());
 			Mockito.when(accessorMock.getServiceById("8")).thenReturn(service);
 			Mockito.doReturn(omMock).when(esMock).makeObjectMapper();
-			Mockito.when(omMock.writeValueAsString(postObjects)).thenThrow( new JsonMappingException("Test Exception") );
+			Mockito.when(omMock.writeValueAsString(postObjects)).thenThrow(new JsonMappingException("Test Exception"));
 			ResponseEntity<String> retVal = esMock.handle(edata);
-	
-			assertEquals ("The response code is 400 for BAD_REQUEST", retVal.getStatusCode(), HttpStatus.BAD_REQUEST);
+
+			assertEquals("The response code is 400 for BAD_REQUEST", retVal.getStatusCode(), HttpStatus.BAD_REQUEST);
 		} catch (JsonProcessingException jpe) {
 			jpe.printStackTrace();
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
-
 	}
-	
 }

@@ -28,6 +28,7 @@ import org.venice.piazza.servicecontroller.data.mongodb.accessors.MongoAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import model.job.PiazzaJobType;
+import model.logger.Severity;
 import model.service.metadata.Service;
 import util.PiazzaLogger;
 
@@ -50,12 +51,12 @@ public class ListServiceHandler implements PiazzaJobHandler {
 	 */
 	@Override
 	public ResponseEntity<String> handle (PiazzaJobType jobRequest ) {
-		coreLogger.log("listing service", PiazzaLogger.INFO);
+		coreLogger.log("listing service", Severity.INFORMATIONAL);
         ResponseEntity<String> handleResourceReturn = handle();
         if (handleResourceReturn.getBody().length() > 0) {
         	return new ResponseEntity<>(handleResourceReturn.getBody(), handleResourceReturn.getStatusCode());
 		} else {
-			coreLogger.log("Something went wrong when trying to get a list of services", PiazzaLogger.ERROR);
+			coreLogger.log("Something went wrong when trying to get a list of services", Severity.ERROR);
 			return new ResponseEntity<>("Could not retrieve a list of user services", HttpStatus.NOT_FOUND);
 		}
 	}
@@ -69,7 +70,7 @@ public class ListServiceHandler implements PiazzaJobHandler {
 			responseEntity = new ResponseEntity<String>(result, HttpStatus.OK);
 		} catch (Exception ex) {
 			LOGGER.error("Exception occurred", ex);
-			coreLogger.log(ex.getMessage(), PiazzaLogger.ERROR);
+			coreLogger.log(ex.getMessage(), Severity.ERROR);
 			responseEntity = new ResponseEntity<String>("Could not retrieve a list of user services" , HttpStatus.NOT_FOUND);
 		}
 
