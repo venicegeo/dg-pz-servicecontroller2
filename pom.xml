@@ -114,13 +114,13 @@
 		<dependency>
 			<groupId>org.venice.piazza</groupId>
 			<artifactId>pz-jobcommon</artifactId>
-			<version>ato-sprite-100-g2e434ed</version>
+			<version>LATEST</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.mongojack</groupId>
 			<artifactId>mongojack</artifactId>
-			<version>2.7.0</version>
+			<version>2.1.0</version>
 		</dependency>
 
 		<dependency>
@@ -154,6 +154,19 @@
 
 	</dependencies>
 	<build>
+		<extensions>
+			<extension>
+				<groupId>org.kuali.maven.wagons</groupId>
+		                <artifactId>maven-s3-wagon</artifactId>
+		                <version>1.2.1</version>
+		      </extension>
+		      <extension>
+			      <groupId>org.springframework.build</groupId>
+			      <artifactId>aws-maven</artifactId>
+			      <version>5.0.0.RELEASE</version>
+	             </extension>
+
+	        </extensions>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
@@ -174,12 +187,12 @@
 		</plugins>
 	</build>
 
-	<repositories>
+	<!--	<repositories>
 		<repository>
-			<id>nexus</id>
-			<url>https://nexus.devops.geointservices.io/content/repositories/Piazza-Group/</url>
+			<id>coastline-s3-nexus-replacement</id>
+			<url>s3://coastline-s3-nexus-replacement/content/repositories/</url> 
 		</repository>
-	</repositories>
+	</repositories> -->
 
 	<profiles>
 		<profile>
