@@ -22,7 +22,7 @@ node {
     ])
     sh """
       ${mvn}/bin/mvn clean package -U 
-      cp target/piazza-servicecontroller-1.0.0.jar ${root}/pz-servicecontroller.jar
+      cp target/piazzaServiceController-1.0.0.jar ${root}/pz-servicecontroller.jar
     """
   }
 
