@@ -2,7 +2,7 @@ applications:
 - name: pz-servicecontroller
   host: pz-servicecontroller
   path: pz-servicecontroller.jar
-  buildpack: java_buildpack
+  buildpack: java-buildpack
   memory: 512M
   instances: 1
   timeout: 80
